@@ -10,8 +10,13 @@ if not localPlayer then return end
 local autoSmashEnabled = false
 local noclipEnabled = false
 local noclipEndTime = 0
-local scanCooldown = 0.5
 local lastScanTime = 0
+
+-- 💡 效能優化：電視快取與搜尋間隔控制，徹底解決卡頓！
+local cachedTV = nil
+local lastSearchTime = 0
+local searchInterval = 0.5 
+
 local currentHighlight = nil
 
 local function clearESP()
@@ -21,14 +26,27 @@ local function clearESP()
     end
 end
 
+-- 🔍 優化後的搜尋函式（結合快取，不重複浪費效能）
 local function findTelevision()
+    if cachedTV and cachedTV.Parent and not cachedTV.Anchored then
+        return cachedTV
+    end
+    
+    local currentTime = tick()
+    if currentTime - lastSearchTime < searchInterval then
+        return nil
+    end
+    lastSearchTime = currentTime
+
     for _, obj in ipairs(Workspace:GetDescendants()) do
         if obj:IsA("BasePart") and (obj.Name:match("Television") or obj.Name:match("TV") or (obj.Parent and obj.Parent.Name:match("Noise"))) then
             if not obj.Anchored then
+                cachedTV = obj
                 return obj
             end
         end
     end
+    cachedTV = nil
     return nil
 end
 
@@ -85,8 +103,14 @@ local function teleportToTelevision()
     return false
 end
 
--- 建立 GUI (強制掛載到 PlayerGui 確保 Delta 可見)
+-- 🎨 建立介面 (掛載到 PlayerGui)
 local playerGui = localPlayer:WaitForChild("PlayerGui")
+
+-- 如果之前有開著的舊介面，先自動清除避免重複
+if playerGui:FindFirstChild("DoorsUtilityV4") then
+    playerGui.DoorsUtilityV4:Destroy()
+end
+
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "DoorsUtilityV4"
 ScreenGui.ResetOnSpawn = false
@@ -106,6 +130,7 @@ local FrameCorner = Instance.new("UICorner")
 FrameCorner.CornerRadius = UDim.new(0, 10)
 FrameCorner.Parent = MainFrame
 
+-- 標題列
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, 0, 0, 35)
 TitleLabel.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
@@ -119,6 +144,22 @@ TitleLabel.Parent = MainFrame
 local TitleCorner = Instance.new("UICorner")
 TitleCorner.CornerRadius = UDim.new(0, 10)
 TitleCorner.Parent = TitleLabel
+
+-- ❌ 新增關閉按鈕 (叉叉)
+local CloseButton = Instance.new("TextButton")
+CloseButton.Size = UDim2.new(0, 30, 0, 30)
+CloseButton.Position = UDim2.new(1, -33, 0, 2)
+CloseButton.BackgroundTransparency = 1
+CloseButton.Text = "✕"
+CloseButton.TextColor3 = Color3.fromRGB(200, 200, 200)
+CloseButton.TextSize = 16
+CloseButton.Font = Enum.Font.SourceSansBold
+CloseButton.Parent = TitleLabel
+
+CloseButton.MouseButton1Click:Connect(function()
+    clearESP()
+    ScreenGui:Destroy()
+end)
 
 local UIListLayout = Instance.new("UIListLayout")
 UIListLayout.Parent = MainFrame
@@ -221,6 +262,7 @@ AutoToggleBtn.MouseButton1Click:Connect(function()
     end
 end)
 
+-- 🔄 輕量化的高頻循環（已大幅優化效能，不再卡頓）
 RunService.Stepped:Connect(function()
     local character = localPlayer.Character
     local rootPart = character and character:FindFirstChild("HumanoidRootPart")
@@ -254,11 +296,11 @@ RunService.Stepped:Connect(function()
     
     if autoSmashEnabled then
         local currentTime = tick()
-        if currentTime - lastScanTime >= scanCooldown then
+        if currentTime - lastScanTime >= 0.5 then
             lastScanTime = currentTime
             smashTelevision()
         end
     end
 end)
 
-print("[DOORS Utility V4] 載入成功！")
+print("[DOORS Utility V4] 載入成功！已優化效能並加入關閉按鈕。")
